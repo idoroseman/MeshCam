@@ -258,11 +258,11 @@ def xor_scaled(dest: bytearray, src: bytes, coef: int) -> None:
     if coef == 0:
         return
     if coef == 1:
-        for i in range(PAYLOAD_SIZE):
+        for i in range(len(src)):
             dest[i] ^= src[i]
         return
     mul_row = GF_MUL[coef]
-    for i in range(PAYLOAD_SIZE):
+    for i in range(len(src)):
         dest[i] ^= mul_row[src[i]]
 
 
@@ -995,7 +995,7 @@ def coefficient_row(frame_id: int, symbol_id: int, k_data: int, coeff_seed: int)
 
 
 def combine_data_payloads(coeff: bytes, data_payloads: Sequence[bytes]) -> bytes:
-    out = bytearray(PAYLOAD_SIZE)
+    out = bytearray(len(data_payloads[0]))
     for i, c in enumerate(coeff):
         if c == 0:
             continue
@@ -1037,7 +1037,7 @@ def solve_full_rank(
             val_r = values[r]
             for cc in range(c, variables):
                 row_r[cc] = mul_row[row_r[cc]]
-            for b in range(PAYLOAD_SIZE):
+            for b in range(len(val_r)):
                 val_r[b] = mul_row[val_r[b]]
 
         row_r = rows[r]
@@ -1053,7 +1053,7 @@ def solve_full_rank(
             val_i = values[rr]
             for cc in range(c, variables):
                 row_i[cc] ^= mul_row[row_r[cc]]
-            for b in range(PAYLOAD_SIZE):
+            for b in range(len(val_r)):
                 val_i[b] ^= mul_row[val_r[b]]
 
         pivot_row_for_col[c] = r
@@ -1216,9 +1216,14 @@ class MeshCamCodec:
             conceal_missing=conceal_missing,
         )
 
-    def build_packets(self, data_payloads: Sequence[bytes], frame_id: int, repair_count: int) -> List[Packet]:
+    def build_packets(self, data_payloads: Sequence[bytes], frame_id: int, repair_count: int, metadata: str = "") -> List[Packet]:
         k_data = len(data_payloads)
         n_total = k_data + repair_count
+
+        extended: List[bytes] = [
+            data_payloads[sid] + bytes([ord(metadata[sid]) if sid < len(metadata) else 0])
+            for sid in range(k_data)
+        ]
 
         packets: List[Packet] = []
         for sid in range(k_data):
@@ -1229,13 +1234,13 @@ class MeshCamCodec:
                     k_data=k_data,
                     n_total=n_total,
                     is_repair=False,
-                    payload=data_payloads[sid],
+                    payload=extended[sid],
                 )
             )
 
         for sid in range(k_data, n_total):
             coeff = coefficient_row(frame_id, sid, k_data, self.coeff_seed)
-            payload = combine_data_payloads(coeff, data_payloads)
+            payload = combine_data_payloads(coeff, extended)
             packets.append(
                 Packet(
                     frame_id=frame_id,

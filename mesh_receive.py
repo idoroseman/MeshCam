@@ -31,7 +31,7 @@ except ImportError as exc:
 P200_K_DATA = 200
 P200_REPAIR = 100
 PACKET_HEADER_SIZE = 4
-PAYLOAD_SIZE = 48
+PAYLOAD_SIZE = 49  # 48 image bytes + 1 FEC-protected metadata byte
 PACKET_RECORD_SIZE = PACKET_HEADER_SIZE + PAYLOAD_SIZE
 
 DEFAULT_OUTPUT_FORMAT = "png"
@@ -133,6 +133,17 @@ def parse_codec_record(record: bytes) -> Packet:
     )
 
 
+def recover_metadata(packets: list[Packet]) -> str:
+    data_by_sid = {p.symbol_id: p for p in packets if not p.is_repair}
+    chars = []
+    for sid in range(max(data_by_sid, default=-1) + 1):
+        p = data_by_sid.get(sid)
+        if p is None or p.payload[-1] == 0:
+            break
+        chars.append(chr(p.payload[-1]))
+    return "".join(chars)
+
+
 def try_decode_frame(
     codec: MeshCamCodec,
     frame: FrameBuffer,
@@ -161,32 +172,45 @@ def try_decode_frame(
         print(f"Cannot decode frame {frame.frame_id}: {exc}")
         return False
     
+    metadata = recover_metadata(frame.packets())
     timestamp = frame.first_seen.strftime("%Y%m%d_%H%M%S")
     image_path = os.path.join(output_dir, f"meshcam_{timestamp}_{frame.frame_id:04x}")
-    codec.save_image(image_path+".png", rgb)
-    codec.save_packet_dumps(image_path+".packets.txt", frame.packets())
-    with open(image_path+".stats.txt", "w", encoding="ascii") as f:
-        f.write("MeshCam Meshtastic Receive\n")
-        f.write(f"Sender={frame.sender}\n")
-        f.write(f"FrameId={frame.frame_id:04x}\n")
-        f.write(f"Profile={profile.name}\n")
-        f.write(f"K={frame.k_data}\n")
-        f.write(f"N={frame.n_total}\n")
-        f.write(f"ReceivedSymbols={frame.received_count()}\n")
-        f.write(f"MissingBeforeFEC={missing_before}\n")
-        f.write(f"SolveRank={rank}\n")
-        f.write(f"MissingAfterFEC={final_missing}\n")
-        f.write(f"FullRecovery={full_recovery}\n")
-        f.write(f"ConcealMissing={DEFAULT_CONCEAL_MISSING}\n")
-        f.write(f"Timestamp={timestamp}\n")
+    try:
+        codec.save_image(image_path+".png", rgb)
+    except Exception as exc:
+        print(f"Failed to save image for frame {frame.frame_id}: {exc}")
+    try:
+        with open(image_path+".stats.txt", "w", encoding="ascii") as f:
+            f.write("MeshCam Meshtastic Receive\n")
+            f.write(f"Sender={frame.sender}\n")
+            f.write(f"FrameId={frame.frame_id:04x}\n")
+            f.write(f"Profile={profile.name}\n")
+            f.write(f"K={frame.k_data}\n")
+            f.write(f"N={frame.n_total}\n")
+            f.write(f"ReceivedSymbols={frame.received_count()}\n")
+            f.write(f"MissingBeforeFEC={missing_before}\n")
+            f.write(f"SolveRank={rank}\n")
+            f.write(f"MissingAfterFEC={final_missing}\n")
+            f.write(f"FullRecovery={full_recovery}\n")
+            f.write(f"ConcealMissing={DEFAULT_CONCEAL_MISSING}\n")
+            f.write(f"Timestamp={timestamp}\n")
+            f.write(f"Metadata={metadata}\n")
 
-    print(
-        "Saved frame "
-        f"{frame.frame_id} -> {image_path} "
-        f"(received={frame.received_count()}/{frame.n_total}, "
-        f"missing_before={missing_before}, rank={rank}, missing_after={final_missing}, "
-        f"full_recovery={full_recovery})"
-    )
+        print(
+            "Saved frame "
+            f"{frame.frame_id} -> {image_path} "
+            f"(received={frame.received_count()}/{frame.n_total}, "
+            f"missing_before={missing_before}, rank={rank}, missing_after={final_missing}, "
+            f"full_recovery={full_recovery})"
+            f"Metadata: {metadata!r}"
+            )
+    except Exception as exc:
+        print(f"Failed to save stats for frame {frame.frame_id}: {exc}")
+        
+    try:
+        codec.save_packet_dumps(image_path+".packets.txt", frame.packets())
+    except Exception as exc:
+        print(f"Failed to save packet dumps for frame {frame.frame_id}: {exc}")
 
     frame.was_decoded = True
     return full_recovery

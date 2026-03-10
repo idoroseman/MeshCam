@@ -32,7 +32,7 @@ except ImportError as exc:
 P200_PROFILE_NAME = "p200"
 P200_K_DATA = 200
 PACKET_HEADER_SIZE = 4
-PAYLOAD_SIZE = 48
+PAYLOAD_SIZE = 49  # 48 image bytes + 1 FEC-protected metadata byte
 PACKET_RECORD_SIZE = PACKET_HEADER_SIZE + PAYLOAD_SIZE
 IMAGE_PORT_NUM = 256 + 2
 DEFAULT_DESTINATION_ID = "^all"
@@ -133,6 +133,12 @@ def parse_args() -> argparse.Namespace:
         default=1.5,
         help="Delay in seconds between packets",
     )
+    parser.add_argument(
+        "--metadata",
+        type=str,
+        default="",
+        help=f"Metadata string (up to {P200_K_DATA} chars); n-th char embedded in n-th data packet payload",
+    )
     return parser.parse_args()
 
 
@@ -177,17 +183,25 @@ def main() -> None:
     print(f"Profile: {profile.name}")
     print(f"Frame ID: {args.frame_id:04X}")
 
+    annotation_lines =  []
+
     long_name = user.get("longName", "")
-    annotation_lines = [long_name] if long_name else []
+    short_name = user.get("shortName", "")
+    if long_name:
+        annotation_lines.append(long_name)
+    if short_name:
+        annotation_lines.append(f"({short_name})")
     if lat_i and lon_i:
         lat, lon = lat_i / 1e7, lon_i / 1e7
         annotation_lines.append(f"{lat:.5f}, {lon:.5f}")
         if alt:
             annotation_lines.append(f"alt {alt}m")
-
+    if args.metadata:
+        annotation_lines.append(args.metadata)
+        
     rgb = codec.load_image_rgb(args.image)
     data_payloads = codec.encode_image_to_data_payloads(rgb, profile)
-    packets = codec.build_packets(data_payloads, frame_id=args.frame_id, repair_count=repair_count)
+    packets = codec.build_packets(data_payloads, frame_id=args.frame_id, repair_count=repair_count, metadata=" ".join(annotation_lines))
 
     print(f"Data packets (K): {profile.data_tiles}")
     print(f"Repair packets (R): {repair_count}")
