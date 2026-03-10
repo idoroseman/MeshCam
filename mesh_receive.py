@@ -206,7 +206,7 @@ def try_decode_frame(
             )
     except Exception as exc:
         print(f"Failed to save stats for frame {frame.frame_id}: {exc}")
-        
+
     try:
         codec.save_packet_dumps(image_path+".packets.txt", frame.packets())
     except Exception as exc:
@@ -258,7 +258,9 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=180.0,
         help="delete frame after this many seconds without any packets (prevents memory leak from incomplete frames)",
-    )    
+    )
+
+    parser.add_argument("--track", type=str, default="", help="track info from specific node")
     parser.add_argument("--channel", type=int, default=0, help="channel index")
     parser.add_argument("--output-dir", type=str, default="received", help="Output directory")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
@@ -318,18 +320,18 @@ def main() -> None:
                     lon = pos.longitude_i / 1e7 if pos.longitude_i else None
                     alt = pos.altitude if pos.altitude else None
                     speed = pos.ground_speed or 0
-                    if args.verbose:
+                    if args.verbose or from_node == args.track:
                         print(f"{header} lat={lat} lon={lon} alt={alt}m speed={speed}m/s ")
                 elif portnum == "TELEMETRY_APP":
                     tel = telemetry_pb2.Telemetry()
                     tel.ParseFromString(payload)
                     m = tel.device_metrics
-                    if args.verbose:
+                    if args.verbose or from_node == args.track:
                         print(f"{header} battery={m.battery_level}% voltage={m.voltage:.2f}V uptime={m.uptime_seconds/3600:.2f}h")
                 elif portnum == "NODEINFO_APP":
                     user = mesh_pb2.User()
                     user.ParseFromString(payload)
-                    if args.verbose:
+                    if args.verbose or from_node == args.track:
                         print(f"{header} {user.long_name!r} ({user.short_name}) id={user.id} hw={user.hw_model}")
                 elif portnum == IMAGE_PORT_NUM:
                     symbol = parse_codec_record(payload)
