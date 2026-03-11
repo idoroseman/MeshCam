@@ -145,7 +145,9 @@ Y_HI_INDICES_P240 = (
 Y_HI_INDEX_SET_P240 = set(Y_HI_INDICES_P240)
 Y_LO_INDICES_P240 = tuple(i for i in range(Y_BLOCKS_PER_TILE_P240) if i not in Y_HI_INDEX_SET_P240)
 
-PAYLOAD_SIZE = 48 + 1
+PAYLOAD_IMAGE_BYTES = 48
+PAYLOAD_METADATA_BYTES = 1
+PAYLOAD_SIZE = PAYLOAD_IMAGE_BYTES + PAYLOAD_METADATA_BYTES
 PACKET_DUMP_HEADER_SIZE = 10
 
 if len(Y_HI_INDICES_P240) != Y_HI_BITS_BLOCKS_P240:
@@ -159,8 +161,8 @@ P240_PAYLOAD_BIT_WIDTHS = tuple(
     + [4] * C_BLOCKS_PER_TILE_P240
     + [4] * C_BLOCKS_PER_TILE_P240
 )
-if sum(P240_PAYLOAD_BIT_WIDTHS) != (PAYLOAD_SIZE * 8):
-    raise RuntimeError("p240 payload layout must be exactly 48 bytes")
+if sum(P240_PAYLOAD_BIT_WIDTHS) != PAYLOAD_IMAGE_BYTES * 8:
+    raise RuntimeError("p240 payload layout must be exactly {PAYLOAD_IMAGE_BYTES} bytes")
 
 COEFF_SEED = 0x5A17C3D9
 
@@ -489,7 +491,7 @@ def _encode_tile_fixed(
     tile_y: int,
     width: int,
 ) -> bytes:
-    payload = bytearray(PAYLOAD_SIZE)
+    payload = bytearray(PAYLOAD_IMAGE_BYTES)
 
     y0 = tile_y * profile.tile_h
     x0 = tile_x * profile.tile_w
@@ -671,8 +673,8 @@ def _encode_tile_p240(
     values.extend(cr_idx)
 
     payload = pack_variable_bits(values, P240_PAYLOAD_BIT_WIDTHS)
-    if len(payload) != PAYLOAD_SIZE:
-        raise RuntimeError("p240 tile payload must be exactly 48 bytes")
+    if len(payload) != PAYLOAD_IMAGE_BYTES:
+        raise RuntimeError(f"p240 tile payload must be exactly {PAYLOAD_IMAGE_BYTES} bytes")
     return payload
 
 
@@ -768,8 +770,8 @@ def _encode_tile_p300(
 
     values = y_idx + cb_idx + cr_idx
     payload = pack_6bit_values(values)
-    if len(payload) != PAYLOAD_SIZE:
-        raise RuntimeError("HD tile payload must be exactly 48 bytes")
+    if len(payload) != PAYLOAD_IMAGE_BYTES:
+        raise RuntimeError(f"HD tile payload must be exactly {PAYLOAD_IMAGE_BYTES} bytes")
     return payload
 
 
